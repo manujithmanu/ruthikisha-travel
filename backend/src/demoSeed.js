@@ -158,11 +158,12 @@ async function ensureCustomer(query, index) {
 }
 
 function bookingState(index) {
-  if (index < 18) return { status: 'CONFIRMED', paymentStatus: 'PAID', reservationState: 'CONFIRMED' }
-  if (index < 20) return { status: 'CANCELLED', paymentStatus: 'REFUNDED', reservationState: 'RELEASED' }
-  if (index < 28) return { status: 'CONFIRMED', paymentStatus: 'PENDING', reservationState: 'CONFIRMED' }
-  if (index < 40) return { status: 'PENDING', paymentStatus: 'PENDING', reservationState: 'LOCKED' }
-  return { status: 'CANCELLED', paymentStatus: 'FAILED', reservationState: 'RELEASED' }
+  if (index < 18) return { status: 'CONFIRMED', paymentStatus: 'PAID', paymentMethod: 'RAZORPAY', gateway: 'RAZORPAY', reservationState: 'CONFIRMED' }
+  if (index < 20) return { status: 'CANCELLED', paymentStatus: 'REFUNDED', paymentMethod: 'RAZORPAY', gateway: 'RAZORPAY', reservationState: 'RELEASED' }
+  if (index < 22) return { status: 'CONFIRMED', paymentStatus: 'PAID', paymentMethod: 'CASH', gateway: 'OFFLINE', reservationState: 'CONFIRMED' }
+  if (index < 28) return { status: 'CONFIRMED', paymentStatus: 'PENDING', paymentMethod: 'CASH', gateway: 'OFFLINE', reservationState: 'CONFIRMED' }
+  if (index < 40) return { status: 'PENDING', paymentStatus: 'PENDING', paymentMethod: 'RAZORPAY', gateway: 'RAZORPAY', reservationState: 'LOCKED' }
+  return { status: 'CANCELLED', paymentStatus: 'FAILED', paymentMethod: 'RAZORPAY', gateway: 'RAZORPAY', reservationState: 'RELEASED' }
 }
 
 async function ensureBooking(query, index, customer, trip, date) {
@@ -172,7 +173,7 @@ async function ensureBooking(query, index, customer, trip, date) {
   const existing = await query('SELECT id,access_token_hash FROM bookings WHERE reference=$1', [reference])
   let bookingId
   if (existing.rowCount) {
-    const owned = await query(`SELECT 1 FROM payments WHERE booking_id=$1 AND gateway='DEMO' AND gateway_payload->>'demo'='true' LIMIT 1`, [existing.rows[0].id])
+    const owned = await query(`SELECT 1 FROM payments WHERE booking_id=$1 AND gateway_payload->>'demo'='true' LIMIT 1`, [existing.rows[0].id])
     if (!owned.rowCount && existing.rows[0].access_token_hash !== sha256(`demo:${reference}`)) {
       console.warn(`Skipped ${reference}: the reference is already used by a non-demo payment`)
       return false
@@ -215,17 +216,18 @@ async function ensureBooking(query, index, customer, trip, date) {
       SET booking_id=EXCLUDED.booking_id,state=EXCLUDED.state,expires_at=EXCLUDED.expires_at
       WHERE seat_reservations.booking_id=EXCLUDED.booking_id OR seat_reservations.state='RELEASED' OR (seat_reservations.state='LOCKED' AND seat_reservations.expires_at<=now())`, [trip.id, date, seats[personIndex], bookingId, state.reservationState, expiration])
   }
-  const existingPayment = await query(`SELECT id FROM payments WHERE booking_id=$1 AND gateway='DEMO' AND gateway_payload->>'demo'='true' ORDER BY created_at LIMIT 1`, [bookingId])
+  const existingPayment = await query(`SELECT id FROM payments WHERE booking_id=$1 AND gateway_payload->>'demo'='true' ORDER BY created_at LIMIT 1`, [bookingId])
   const payload = JSON.stringify({ demo: true, sample: true, note: 'Not a Razorpay transaction', seeded: true })
+  const paidAt = state.paymentStatus === 'PAID' ? new Date() : null
   if (existingPayment.rowCount) {
-    await query('UPDATE payments SET amount=$1,status=$2,refund_status=$3,gateway_payload=$4,updated_at=now() WHERE id=$5', [total, state.paymentStatus, state.paymentStatus === 'REFUNDED' ? 'PROCESSED' : null, payload, existingPayment.rows[0].id])
+    await query('UPDATE payments SET gateway=$1,payment_method=$2,amount=$3,status=$4,paid_at=$5,paid_by=NULL,refund_status=$6,gateway_payload=$7,updated_at=now() WHERE id=$8', [state.gateway, state.paymentMethod, total, state.paymentStatus, paidAt, state.paymentStatus === 'REFUNDED' ? 'PROCESSED' : null, payload, existingPayment.rows[0].id])
   } else {
-    await query('INSERT INTO payments(booking_id,gateway,amount,status,refund_status,gateway_payload) VALUES($1,\'DEMO\',$2,$3,$4,$5)', [bookingId, total, state.paymentStatus, state.paymentStatus === 'REFUNDED' ? 'PROCESSED' : null, payload])
+    await query('INSERT INTO payments(booking_id,gateway,payment_method,amount,status,paid_at,refund_status,gateway_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8)', [bookingId, state.gateway, state.paymentMethod, total, state.paymentStatus, paidAt, state.paymentStatus === 'REFUNDED' ? 'PROCESSED' : null, payload])
   }
   if (state.paymentStatus === 'REFUNDED') {
     const refundIndex = index - 17
     await query(`INSERT INTO refunds(payment_id,gateway_refund_id,amount,status,reason,gateway_payload)
-      SELECT p.id,$2,$3,'PROCESSED','Demo sample refund',$4 FROM payments p WHERE p.booking_id=$1 AND p.gateway='DEMO' AND p.gateway_payload->>'demo'='true'
+      SELECT p.id,$2,$3,'PROCESSED','Demo sample refund',$4 FROM payments p WHERE p.booking_id=$1 AND p.gateway_payload->>'demo'='true'
       ON CONFLICT(gateway_refund_id) DO UPDATE SET amount=EXCLUDED.amount,status='PROCESSED',updated_at=now()`, [bookingId, `DEMO-REFUND-${String(refundIndex).padStart(3, '0')}`, total, payload])
   }
   return true
@@ -264,8 +266,8 @@ export async function seedDemoData(query) {
     query('SELECT count(*)::int count FROM routes WHERE id=ANY($1::uuid[])', [ids(routeRows)]),
     query('SELECT count(*)::int count FROM schedules WHERE id=ANY($1::uuid[])', [Array.from(tripsByRoute.values()).flat().map((trip) => trip.id)]),
     query('SELECT count(*)::int count FROM customers WHERE id=ANY($1::uuid[])', [ids(customerRows)]),
-    query("SELECT count(DISTINCT b.id)::int count FROM bookings b JOIN payments p ON p.booking_id=b.id WHERE b.reference LIKE 'DEMO-BOOKING-%' AND p.gateway='DEMO' AND p.gateway_payload->>'demo'='true'"),
-    query("SELECT count(*)::int count FROM payments WHERE gateway='DEMO' AND gateway_payload->>'demo'='true'"),
+    query("SELECT count(DISTINCT b.id)::int count FROM bookings b JOIN payments p ON p.booking_id=b.id WHERE b.reference LIKE 'DEMO-BOOKING-%' AND p.gateway_payload->>'demo'='true'"),
+    query("SELECT count(*)::int count FROM payments WHERE gateway_payload->>'demo'='true'"),
     query("SELECT count(*)::int count FROM refunds WHERE gateway_refund_id LIKE 'DEMO-REFUND-%'"),
   ])
   console.log(`Demo seed ready: buses=${busCount.rows[0].count}, routes=${routeCount.rows[0].count}, schedules=${scheduleCount.rows[0].count}, customers=${customerCount.rows[0].count}, bookings=${bookingTotal.rows[0].count}, payments=${paymentCount.rows[0].count}, refunds=${refundCount.rows[0].count}; added or refreshed ${bookingCount} demo bookings this run.`)
