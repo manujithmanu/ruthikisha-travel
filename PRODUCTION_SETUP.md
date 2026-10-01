@@ -12,6 +12,8 @@ The project keeps its current Vite customer site and adds an Express API under `
 
 For frontend-only development use `npm run dev`. Start the API separately from `backend/` with `npm install`, `npm run migrate`, `npm run seed`, and `npm run dev`; set `APP_URL=http://localhost:5173` and the database URL first. The Vite dev server should proxy `/api` to `http://localhost:4000` (see `vite.config.js`).
 
+For a local full-flow demo, set `SEED_DEMO_DATA=true` before running `npm run seed` from `backend/` (after migrations). It creates 40 demo buses, 34 directed South India routes, 136 recurring schedules covering the next 90 days, 30 `.test` customers, 48 bookings and sample payments, plus two explicitly marked demo refunds. Demo payment rows use gateway `DEMO`; they are not Razorpay transactions. Re-running the seed refreshes its namespaced demo bookings and schedule horizon without deleting unrelated data. Keep the flag `false` for production seeding.
+
 ## Operations
 
 PostgreSQL is private to the Compose network. Persistent volumes retain the database, uploads, and Caddy certificates. Take encrypted off-host backups regularly:
