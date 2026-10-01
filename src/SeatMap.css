@@ -1,0 +1,1 @@
+.seat-grid{grid-auto-flow:row;align-items:center}.seat-grid .seat{min-width:0;max-width:76px;justify-self:stretch}.seat-grid .seat.sleeper{height:54px;border-radius:12px 5px}.seat-grid .seat.women-only{border-style:dashed}

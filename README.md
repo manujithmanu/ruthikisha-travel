@@ -1,16 +1,16 @@
-# React + Vite
+﻿# Ruthikisha Travel
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Premium React + Vite customer site with an Express REST API, PostgreSQL, protected admin dashboard, live seat reservations, and Razorpay verification.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Install frontend dependencies with `npm install`, then run `npm run dev`.
+- Vite proxies `/api` to `http://localhost:4000`; start the backend separately with `npm install --prefix backend` and `npm run api:dev`.
+- Configure a PostgreSQL `DATABASE_URL`, a `JWT_SECRET` with at least 32 characters, and `APP_URL`; apply the schema with `npm run api:migrate` and create the initial catalog/admin with `npm run api:seed`.
+- Run `npm run lint` and `npm run build` for the frontend checks.
 
-## React Compiler
+## Deployment and operations
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+See [PRODUCTION_SETUP.md](PRODUCTION_SETUP.md) for Docker Compose, HTTPS at `manujithdev.shop`, one-time seeding, Razorpay setup, and database backups. See [ADMIN_GUIDE.md](ADMIN_GUIDE.md) for roles and operations.
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+No production credentials are stored in this repository. Copy `.env.example`, generate unique secrets, and replace the initial sample catalog with the operator's approved fleet and schedules before selling tickets.

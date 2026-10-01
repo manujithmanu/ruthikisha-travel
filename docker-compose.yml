@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ruthikisha}
+      POSTGRES_USER: ${POSTGRES_USER:-ruthikisha}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ruthikisha} -d ${POSTGRES_DB:-ruthikisha}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      SEED_ON_STARTUP: ${SEED_ON_STARTUP:-false}
+      DATABASE_URL: postgres://${POSTGRES_USER:-ruthikisha}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ruthikisha}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+  frontend:
+    build: .
+    restart: unless-stopped
+    depends_on: [backend]
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-manujithdev.shop}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [frontend]
+volumes:
+  postgres_data:
+  uploads:
+  caddy_data:
+  caddy_config:
