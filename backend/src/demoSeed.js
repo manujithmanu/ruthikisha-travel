@@ -135,14 +135,26 @@ async function ensureSchedule(query, bus, route, routeIndex, variant) {
 }
 
 async function ensureCustomer(query, index) {
-  const phone = `+9100000${String(index + 1).padStart(5, '0')}`
   const email = `traveller${String(index + 1).padStart(2, '0')}@example.test`
-  const prior = await query('SELECT id,full_name,email FROM customers WHERE phone=$1', [phone])
-  if (prior.rowCount && (prior.rows[0].email !== email || prior.rows[0].full_name !== customers[index])) {
-    throw new Error(`Demo customer phone ${phone} is already assigned to a non-demo customer`)
+  const expectedName = customers[index]
+  const previousFixture = await query('SELECT id,full_name,phone,email FROM customers WHERE email=$1 AND full_name=$2 ORDER BY id LIMIT 1', [email, expectedName])
+  if (previousFixture.rowCount) return previousFixture.rows[0]
+  const baseNumber = 9900000001 + index
+  for (let attempt = 0; attempt < 10000; attempt += 1) {
+    const phone = `+91${String(baseNumber + attempt).padStart(10, '0')}`
+    const prior = await query('SELECT id,full_name,email FROM customers WHERE phone=$1', [phone])
+    if (prior.rowCount) {
+      if (prior.rows[0].email === email && prior.rows[0].full_name === expectedName) {
+        return (await query('SELECT id,full_name,phone,email FROM customers WHERE id=$1', [prior.rows[0].id])).rows[0]
+      }
+      continue
+    }
+    const inserted = await query('INSERT INTO customers(full_name,phone,email) VALUES($1,$2,$3) ON CONFLICT(phone) DO NOTHING RETURNING id', [expectedName, phone, email])
+    if (inserted.rowCount) {
+      return (await query('SELECT id,full_name,phone,email FROM customers WHERE id=$1', [inserted.rows[0].id])).rows[0]
+    }
   }
-  await query('INSERT INTO customers(full_name,phone,email) VALUES($1,$2,$3) ON CONFLICT(phone) DO NOTHING', [customers[index], phone, email])
-  return (await query('SELECT id,full_name,phone,email FROM customers WHERE phone=$1', [phone])).rows[0]
+  throw new Error(`Could not allocate an unused reserved demo phone number for ${email}`)
 }
 
 function bookingState(index) {
